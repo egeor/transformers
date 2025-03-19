@@ -473,7 +473,7 @@ class GenerationConfig(PushToHubMixin):
 
         # Assistant generation
         self.is_assistant = False
-        self.num_assistant_tokens = kwargs.pop("num_assistant_tokens", 20)
+        self.num_assistant_tokens = kwargs.pop("num_assistant_tokens", 8)
         self.num_assistant_tokens_schedule = kwargs.pop("num_assistant_tokens_schedule", "constant")
         self.assistant_confidence_threshold = kwargs.pop("assistant_confidence_threshold", 0.4)
         self.prompt_lookup_num_tokens = kwargs.pop("prompt_lookup_num_tokens", None)

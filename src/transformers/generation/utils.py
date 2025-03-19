@@ -52,6 +52,7 @@ from .beam_constraints import DisjunctiveConstraint, PhrasalConstraint
 from .beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
 from .candidate_generator import (
     AssistedCandidateGenerator,
+    AssistedCandidateGeneratorWithHelper, 
     AssistedCandidateGeneratorDifferentTokenizers,
     CandidateGenerator,
     EarlyExitCandidateGenerator,
@@ -827,9 +828,11 @@ class GenerationMixin:
         input_ids: torch.LongTensor,
         inputs_tensor: torch.Tensor,
         assistant_model: "PreTrainedModel",
+        assistant_model_helper: "PreTrainedModel",      
         logits_processor: LogitsProcessorList,
         target_tokenizer: "PreTrainedTokenizerBase",
         assistant_tokenizer: "PreTrainedTokenizerBase",
+        assistant_tokenizer_helper: "PreTrainedTokenizerBase",   
         model_kwargs: Dict,
     ) -> CandidateGenerator:
         """
@@ -865,14 +868,41 @@ class GenerationMixin:
                 assistant_tokenizer=assistant_tokenizer,
             )
         else:
-            candidate_generator = AssistedCandidateGenerator(
-                input_ids=input_ids,
-                assistant_model=assistant_model,
-                generation_config=generation_config,
-                model_kwargs=model_kwargs,
-                inputs_tensor=inputs_tensor,
-                logits_processor=logits_processor,
-            )
+            if assistant_model_helper is not None:
+                assistant_model_helper.tmp_kv_cache = None
+                candidate_generator = AssistedCandidateGeneratorWithHelper(
+                    input_ids=input_ids,
+                    assistant_model=assistant_model,
+                    assistant_model_helper=assistant_model_helper,
+                    generation_config=generation_config,
+                    model_kwargs=model_kwargs,
+                    inputs_tensor=inputs_tensor,
+                    target_tokenizer=target_tokenizer,
+                    assistant_tokenizer_helper=assistant_tokenizer_helper,                
+                    logits_processor=logits_processor,
+                )
+            else:
+                different_tokenizers_helper = all(v is not None for v in (target_tokenizer, assistant_tokenizer_helper))
+                if different_tokenizers_helper and assistant_tokenizer_helper is not None:
+                    candidate_generator = AssistedCandidateGeneratorDifferentTokenizers(
+                        input_ids=input_ids,
+                        assistant_model=assistant_model,
+                        generation_config=generation_config,
+                        model_kwargs=model_kwargs,
+                        inputs_tensor=inputs_tensor,
+                        logits_processor=logits_processor,
+                        target_tokenizer=target_tokenizer,
+                        assistant_tokenizer=assistant_tokenizer_helper
+                    )
+                else:
+                    candidate_generator = AssistedCandidateGenerator(
+                        input_ids=input_ids,
+                        assistant_model=assistant_model,
+                        generation_config=generation_config,
+                        model_kwargs=model_kwargs,
+                        inputs_tensor=inputs_tensor,
+                        logits_processor=logits_processor,
+                    )
         return candidate_generator
 
     def _get_logits_processor(
@@ -1885,6 +1915,7 @@ class GenerationMixin:
         prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor], List[int]]] = None,
         synced_gpus: Optional[bool] = None,
         assistant_model: Optional["PreTrainedModel"] = None,
+        assistant_model_helper: Optional["PreTrainedModel"] = None,           
         streamer: Optional["BaseStreamer"] = None,
         negative_prompt_ids: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
@@ -1978,6 +2009,7 @@ class GenerationMixin:
         self._validate_model_class()
         tokenizer = kwargs.pop("tokenizer", None)  # Pull this out first, we only use it for stopping criteria
         assistant_tokenizer = kwargs.pop("assistant_tokenizer", None)  # only used for assisted generation
+        assistant_tokenizer_helper = kwargs.pop("assistant_tokenizer_helper", None)  # only used for assisted generation
 
         generation_config, model_kwargs = self._prepare_generation_config(generation_config, **kwargs)
         self._validate_model_kwargs(model_kwargs.copy())
@@ -2157,9 +2189,11 @@ class GenerationMixin:
                 input_ids=input_ids,
                 inputs_tensor=inputs_tensor,
                 assistant_model=assistant_model,
+                assistant_model_helper=assistant_model_helper,
                 logits_processor=logits_processor,
                 target_tokenizer=tokenizer,
                 assistant_tokenizer=assistant_tokenizer,
+                assistant_tokenizer_helper=assistant_tokenizer_helper,                 
                 model_kwargs=model_kwargs,
             )
 
